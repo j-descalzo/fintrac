@@ -99,23 +99,6 @@ fintrac/
 
 ---
 
-## 🗺️ Roadmap
-
-- [x] Escáner de comprobantes con Claude Vision
-- [x] Import CSV Mercado Pago
-- [x] ETL con alias
-- [x] Categorización editable
-- [x] Export CSV/XLSX
-- [x] Modo sin API key
-- [x] **PWA instalable en Android**
-- [ ] Post de LinkedIn con la historia del build
-- [ ] Backend mínimo para modelo freemium / Pro
-- [ ] Soporte multi-banco (BBVA, Santander, Naranja X)
-- [ ] Gráficos de evolución mensual
-- [ ] Reglas de categorización automática
-
----
-
 ## 🤝 Contribuciones
 
 Issues y PRs son bienvenidos. Si usás Fintrac y encontrás algo roto, abrí un issue con el CSV/comprobante que falla (sin datos sensibles).
@@ -128,4 +111,6 @@ MIT — hacé lo que quieras, con crédito.
 
 ---
 
-*Construido con 🧉 y Claude · Argentina 2025*
+Desarrollado por [Jonathan Descalzo](https://www.linkedin.com/in/jonathan-d-35201a107/)
+
+*Construido con 🧉 y Claude · Argentina 2026*
