@@ -1303,13 +1303,7 @@ footer{
 // ══════════════════════════════════════════════════════════
 const SUPABASE_URL      = 'https://vrstlmwcnztdasanxbag.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZyc3RsbXdjbnp0ZGFzYW54YmFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNDg0NjcsImV4cCI6MjA4ODgyNDQ2N30.-ccRu5pjiN6aP09yqEA_OcD8wDMLuyV0eP1QhEB8UG4';
-const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    detectSessionInUrl: true,
-    persistSession: true,
-    autoRefreshToken: true,
-  }
-});
+const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ── AUTH STATE ────────────────────────────────────────────
 let currentUser = null;
@@ -1436,6 +1430,11 @@ function skipAuth() {
 async function signOut() {
   document.getElementById('user-menu').classList.remove('open');
   await _sb.auth.signOut();
+  currentUser = null;
+  updateAuthUI();
+  localStorage.removeItem('fintrac_skip_auth');
+  toast('Sesión cerrada', 'warn');
+  setTimeout(() => location.reload(), 800);
 }
 
 // ── SYNC: CLOUD → LOCAL (al hacer login) ─────────────────
@@ -1448,11 +1447,11 @@ async function syncFromCloud() {
       .order('fecha', { ascending: false });
     if (error) throw error;
 
+    // calcular localOnly SIEMPRE (antes del if)
+    const cloudIds = new Set((data || []).map(r => r.id));
+    const localOnly = gastos.filter(g => !cloudIds.has(g.id));
+
     if (data && data.length > 0) {
-      // Mergear: cloud tiene prioridad, preservar gastos locales que no están en cloud
-      const cloudIds = new Set(data.map(r => r.id));
-      const localOnly = gastos.filter(g => !cloudIds.has(g.id));
-      // mapear columnas cloud → objeto local
       const fromCloud = data.map(r => ({
         id:        r.id,
         monto:     parseFloat(r.monto),
@@ -1474,7 +1473,7 @@ async function syncFromCloud() {
     }
 
     // subir gastos locales que no están en cloud
-    if (localOnly && localOnly.length > 0) {
+    if (localOnly.length > 0) {
       await pushBatchToCloud(localOnly);
     }
   } catch(e) {
