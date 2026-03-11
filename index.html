@@ -1303,7 +1303,13 @@ footer{
 // ══════════════════════════════════════════════════════════
 const SUPABASE_URL      = 'https://vrstlmwcnztdasanxbag.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZyc3RsbXdjbnp0ZGFzYW54YmFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNDg0NjcsImV4cCI6MjA4ODgyNDQ2N30.-ccRu5pjiN6aP09yqEA_OcD8wDMLuyV0eP1QhEB8UG4';
-const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    detectSessionInUrl: true,
+    persistSession: true,
+    autoRefreshToken: true,
+  }
+});
 
 // ── AUTH STATE ────────────────────────────────────────────
 let currentUser = null;
