@@ -1111,42 +1111,92 @@ footer{
 <div class="toast" id="toast"></div>
 
 <script>
+// ── INDEXEDDB: key persiste aunque Chrome limpie localStorage ─
+const _IDB = (() => {
+  const DB = 'fintrac_db', ST = 'kv';
+  const open = () => new Promise((res, rej) => {
+    const r = indexedDB.open(DB, 1);
+    r.onupgradeneeded = e => e.target.result.createObjectStore(ST);
+    r.onsuccess = e => res(e.target.result);
+    r.onerror   = () => rej(r.error);
+  });
+  return {
+    async get(k) {
+      try {
+        const db = await open();
+        return await new Promise((res, rej) => {
+          const r = db.transaction(ST).objectStore(ST).get(k);
+          r.onsuccess = () => res(r.result ?? null);
+          r.onerror   = () => rej(r.error);
+        });
+      } catch { return localStorage.getItem(k); }
+    },
+    async set(k, v) {
+      try {
+        const db = await open();
+        await new Promise((res, rej) => {
+          const tx = db.transaction(ST, 'readwrite');
+          tx.objectStore(ST).put(v, k);
+          tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+        });
+      } catch {}
+      try { localStorage.setItem(k, v); } catch {}
+    },
+    async del(k) {
+      try {
+        const db = await open();
+        await new Promise((res, rej) => {
+          const tx = db.transaction(ST, 'readwrite');
+          tx.objectStore(ST).delete(k);
+          tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+        });
+      } catch {}
+      try { localStorage.removeItem(k); } catch {}
+    }
+  };
+})();
+
 // ── STATE ─────────────────────────────────────────────────────
 let gastos = JSON.parse(localStorage.getItem('gastos_v2')||'[]');
-let apiKey = localStorage.getItem('anthropic_key')||'';
+let apiKey = '';
 let currentImageB64 = null;
 let currentMimeType = 'image/jpeg';
 let rMedio = '', mMedio = '';
 
-// ── INIT ──────────────────────────────────────────────────────
-const hoy = new Date();
-document.getElementById('fecha-chip').textContent =
-  hoy.toLocaleDateString('es-AR',{weekday:'short',day:'numeric',month:'short'});
-document.getElementById('m-fecha').valueAsDate = hoy;
+// ── INIT (async: espera IDB antes de mostrar cualquier modal) ──
+(async () => {
+  const hoy = new Date();
+  document.getElementById('fecha-chip').textContent =
+    hoy.toLocaleDateString('es-AR',{weekday:'short',day:'numeric',month:'short'});
+  document.getElementById('m-fecha').valueAsDate = hoy;
 
-if (!apiKey && !localStorage.getItem('skip_api')) {
-  document.getElementById('modal-api').style.display = 'flex';
-} else if (apiKey) {
-  setApiStatus(true);
-}
-updateBadge();
-setupDrop();
-setTimeout(setupCsvDrop, 100);
-setTimeout(rebuildCatDropdowns, 150);
+  apiKey = (await _IDB.get('anthropic_key')) || localStorage.getItem('anthropic_key') || '';
+  const skip = (await _IDB.get('skip_api')) || localStorage.getItem('skip_api') || '';
+
+  if (!apiKey && !skip) {
+    document.getElementById('modal-api').style.display = 'flex';
+  } else if (apiKey) {
+    setApiStatus(true);
+  }
+  updateBadge();
+  setupDrop();
+  setTimeout(setupCsvDrop, 100);
+  setTimeout(rebuildCatDropdowns, 150);
+})();
 
 // ── API KEY ───────────────────────────────────────────────────
-function saveApiKey() {
+async function saveApiKey() {
   const v = document.getElementById('api-key-input').value.trim();
   if (!v.startsWith('sk-ant')) return toast('Key inválida (debe empezar con sk-ant)', 'err');
   apiKey = v;
-  localStorage.setItem('anthropic_key', v);
-  localStorage.removeItem('skip_api');
+  await _IDB.set('anthropic_key', v);
+  await _IDB.del('skip_api');
   document.getElementById('modal-api').style.display = 'none';
   setApiStatus(true);
   toast('✓ API key guardada — modo IA activado', 'ok');
 }
-function skipApiKey() {
-  localStorage.setItem('skip_api', '1');
+async function skipApiKey() {
+  await _IDB.set('skip_api', '1');
   document.getElementById('modal-api').style.display = 'none';
   setApiStatus(false);
   toast('Modo manual activado — podés agregar la key desde ⚙ Config', 'warn');
@@ -2117,11 +2167,11 @@ function renderCfgCatList() {
 }
 
 // ── Config: API Key ──────────────────────────────────────────
-function cfgSaveApiKey() {
+async function cfgSaveApiKey() {
   const v = document.getElementById('cfg-api-key').value.trim();
   if (!v.startsWith('sk-ant')) return toast('Key inválida (debe empezar con sk-ant)', 'err');
   apiKey = v;
-  localStorage.setItem('anthropic_key', v);
+  await _IDB.set('anthropic_key', v);
   setApiStatus(true);
   toast('✓ API key guardada', 'ok');
 }
