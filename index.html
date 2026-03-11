@@ -855,7 +855,7 @@ footer{
       <span id="sync-badge" class="sync-badge" style="display:none">☁ sync</span>
       <div class="user-menu" id="user-menu">
         <div class="user-menu-item" onclick="syncNow()">☁ Sincronizar ahora</div>
-        <div class="user-menu-item danger" onclick="signOut()">→ Cerrar sesión</div>
+        <div class="user-menu-item danger" onclick="event.stopPropagation();signOut()">→ Cerrar sesión</div>
       </div>
     </div>
     <!-- Login btn (visible cuando no hay sesión) -->
