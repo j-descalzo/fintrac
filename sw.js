@@ -5,7 +5,7 @@
 //              Offline fallback para cuando no hay red.
 // ============================================================
 
-const APP_VERSION = 'v1.0.0';
+const APP_VERSION = 'v1.1.0';
 const CACHE_STATIC = `fintrac-static-${APP_VERSION}`;
 const CACHE_DYNAMIC = `fintrac-dynamic-${APP_VERSION}`;
 
@@ -62,6 +62,18 @@ self.addEventListener('fetch', (event) => {
 
   // No interceptar requests a la API de Anthropic (siempre necesitan red)
   if (url.hostname === 'api.anthropic.com') {
+    event.respondWith(networkOnly(request));
+    return;
+  }
+
+  // No interceptar requests a Supabase (auth + DB siempre necesitan red)
+  if (url.hostname.endsWith('supabase.co')) {
+    event.respondWith(networkOnly(request));
+    return;
+  }
+
+  // No interceptar jsdelivr (Supabase SDK)
+  if (url.hostname === 'cdn.jsdelivr.net') {
     event.respondWith(networkOnly(request));
     return;
   }
