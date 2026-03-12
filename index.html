@@ -1309,7 +1309,7 @@ const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     persistSession: true,
     autoRefreshToken: true,
     storageKey: 'fintrac-auth',
-    flowType: 'implicit',
+    flowType: 'pkce',
   }
 });
 
@@ -1319,12 +1319,14 @@ let authMode = 'login'; // 'login' | 'register'
 
 // Escuchar cambios de sesión (login, logout, token refresh)
 _sb.auth.onAuthStateChange(async (event, session) => {
+  console.log('[Fintrac] Auth event:', event, session?.user?.email);
   currentUser = session?.user ?? null;
   updateAuthUI();
   if (event === 'SIGNED_IN') {
     document.getElementById('modal-auth').style.display = 'none';
     toast('✓ Sesión iniciada — sincronizando…', 'ok');
-    await syncFromCloud(); // pull datos del server al entrar
+    await syncApiKeyFromCloud();
+    await syncFromCloud();
   }
   if (event === 'SIGNED_OUT') {
     toast('Sesión cerrada', 'warn');
@@ -1390,9 +1392,14 @@ function setAuthError(msg) {
 }
 
 async function authWithGoogle() {
+  // PKCE flow: redirectTo debe ser la URL base sin hash/query
+  const redirectTo = window.location.origin + window.location.pathname;
   const { error } = await _sb.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo: window.location.href }
+    options: {
+      redirectTo,
+      queryParams: { access_type: 'offline', prompt: 'consent' }
+    }
   });
   if (error) setAuthError(error.message);
 }
@@ -1550,6 +1557,45 @@ async function deleteFromCloud(id) {
   }
 }
 
+// ── SYNC: API KEY ← cloud (al iniciar sesión) ────────────────
+async function syncApiKeyFromCloud() {
+  if (!currentUser) return;
+  try {
+    const { data, error } = await _sb
+      .from('user_settings')
+      .select('value')
+      .eq('user_id', currentUser.id)
+      .eq('key', 'anthropic_key')
+      .single();
+    if (error || !data) return; // sin key guardada en cloud, no pasa nada
+    const cloudKey = data.value;
+    if (cloudKey && !apiKey) {
+      // Tenemos key en cloud pero no local → usarla
+      apiKey = cloudKey;
+      await _IDB.set('anthropic_key', cloudKey);
+      setApiStatus(true);
+      toast('🔑 API key sincronizada desde la nube', 'ok');
+    }
+  } catch(e) {
+    console.warn('[Fintrac] syncApiKeyFromCloud error:', e.message);
+  }
+}
+
+// ── SYNC: API KEY → cloud (al guardar) ───────────────────────
+async function pushApiKeyToCloud(key) {
+  if (!currentUser || !key) return;
+  try {
+    const { error } = await _sb.from('user_settings').upsert({
+      user_id: currentUser.id,
+      key: 'anthropic_key',
+      value: key,
+    }, { onConflict: 'user_id,key' });
+    if (error) throw error;
+  } catch(e) {
+    console.warn('[Fintrac] pushApiKeyToCloud error:', e.message);
+  }
+}
+
 async function syncNow() {
   document.getElementById('user-menu').classList.remove('open');
   toast('Sincronizando…', 'warn');
@@ -1632,10 +1678,34 @@ let rMedio = '', mMedio = '';
   apiKey = (await _IDB.get('anthropic_key')) || localStorage.getItem('anthropic_key') || '';
   const skip = (await _IDB.get('skip_api')) || localStorage.getItem('skip_api') || '';
 
-  // Chequear sesión Supabase activa
-  const { data: { session } } = await _sb.auth.getSession();
+  // PKCE: el código viene en ?code= — Supabase lo intercambia automáticamente
+  // Pero necesitamos esperar a que getSession() resuelva después del exchange
+  let session = null;
+  try {
+    const { data, error } = await _sb.auth.getSession();
+    session = data?.session ?? null;
+    if (error) console.warn('[Fintrac] getSession error:', error.message);
+  } catch(e) {
+    console.warn('[Fintrac] getSession exception:', e);
+  }
   currentUser = session?.user ?? null;
+
+  // Si hay ?code= en la URL (redirect OAuth), limpiar la URL
+  if (window.location.search.includes('code=')) {
+    const cleanUrl = window.location.origin + window.location.pathname;
+    window.history.replaceState({}, document.title, cleanUrl);
+  }
+
   updateAuthUI();
+
+  // Si acabamos de hacer login via OAuth, sincronizar
+  if (currentUser && window.location.search.includes('code=')) {
+    document.getElementById('modal-auth').style.display = 'none';
+    toast('✓ Sesión iniciada — sincronizando…', 'ok');
+    // Sincronizar API key desde cloud si no tenemos una local
+    await syncApiKeyFromCloud();
+    await syncFromCloud();
+  }
 
   // Mostrar modal auth si no hay sesión (primera vez)
   const skipAuth = localStorage.getItem('fintrac_skip_auth');
@@ -1646,7 +1716,6 @@ let rMedio = '', mMedio = '';
   }
 
   if (!apiKey && !skip) {
-    // Solo mostramos el modal API si ya hay sesión o eligió modo local
     if (currentUser || skipAuth) {
       document.getElementById('modal-api').style.display = 'flex';
     }
@@ -1667,6 +1736,7 @@ async function saveApiKey() {
   apiKey = v;
   await _IDB.set('anthropic_key', v);
   await _IDB.del('skip_api');
+  await pushApiKeyToCloud(v); // sincronizar a cloud si hay sesión
   document.getElementById('modal-api').style.display = 'none';
   setApiStatus(true);
   toast('✓ API key guardada — modo IA activado', 'ok');
@@ -2650,6 +2720,7 @@ async function cfgSaveApiKey() {
   if (!v.startsWith('sk-ant')) return toast('Key inválida (debe empezar con sk-ant)', 'err');
   apiKey = v;
   await _IDB.set('anthropic_key', v);
+  await pushApiKeyToCloud(v); // sincronizar a cloud si hay sesión
   setApiStatus(true);
   toast('✓ API key guardada', 'ok');
 }
