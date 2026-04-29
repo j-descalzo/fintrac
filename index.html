@@ -3515,7 +3515,9 @@
                     console.warn("[Auth] signOut error:", e.message);
                 }
                 currentUser = null;
-                // Limpiar gastos locales al cerrar sesión
+                // Al cerrar sesión limpiamos solo el caché local para que
+                // al próximo login se re-sincronice todo desde la nube.
+                // Los datos ya están en Supabase, no se pierden.
                 gastos = [];
                 localStorage.removeItem("gastos_v2");
                 localStorage.removeItem("fintrac_skip_auth");
@@ -3536,9 +3538,13 @@
                         .order("fecha", { ascending: false });
                     if (error) throw error;
 
-                    // calcular localOnly SIEMPRE (antes del if)
-                    const cloudIds = new Set((data || []).map((r) => r.id));
-                    const localOnly = gastos.filter((g) => !cloudIds.has(g.id));
+                    // Normalizar IDs a string para comparar (local usa Date.now numérico)
+                    const cloudIds = new Set(
+                        (data || []).map((r) => String(r.id)),
+                    );
+                    const localOnly = gastos.filter(
+                        (g) => !cloudIds.has(String(g.id)),
+                    );
 
                     const fromCloud = (data || []).map((r) => ({
                         id: r.id,
@@ -3578,69 +3584,100 @@
                 setSyncBadge("ok");
             }
 
+            // Convertir id numérico (Date.now) a string para compatibilidad
+            // con columnas text/varchar en Supabase
+            function toRow(g) {
+                return {
+                    id: String(g.id),
+                    user_id: currentUser.id,
+                    monto: g.monto,
+                    descripcion: g.desc,
+                    fecha: g.fecha,
+                    categoria: g.categoria || null,
+                    subcat: g.subcat || null,
+                    medio: g.medio || null,
+                    cuotas: g.cuotas || 1,
+                    etiqueta: g.etiqueta || null,
+                    notas: g.notas || null,
+                    origen: g.origen || "manual",
+                    mesanio: g.mesanio || null,
+                };
+            }
+
             // ── SYNC: LOCAL → CLOUD (upsert individual) ───────────────
             async function pushToCloud(g) {
                 if (!currentUser) return;
                 try {
-                    const { error } = await _sb.from("transacciones").upsert({
-                        id: g.id,
-                        user_id: currentUser.id,
-                        monto: g.monto,
-                        descripcion: g.desc,
-                        fecha: g.fecha,
-                        categoria: g.categoria || null,
-                        subcat: g.subcat || null,
-                        medio: g.medio || null,
-                        cuotas: g.cuotas || 1,
-                        etiqueta: g.etiqueta || null,
-                        notas: g.notas || null,
-                        origen: g.origen || "manual",
-                        mesanio: g.mesanio || null,
-                    });
-                    if (error) throw error;
+                    const row = toRow(g);
+                    console.log(
+                        "[Fintrac] pushToCloud →",
+                        row.id,
+                        row.descripcion,
+                    );
+                    const { error } = await _sb
+                        .from("transacciones")
+                        .upsert(row);
+                    if (error) {
+                        console.error(
+                            "[Fintrac] pushToCloud ERROR:",
+                            error.code,
+                            error.message,
+                            error.details,
+                        );
+                        throw error;
+                    }
+                    console.log("[Fintrac] pushToCloud OK:", row.id);
                 } catch (e) {
-                    console.warn("[Fintrac] pushToCloud error:", e.message);
+                    console.warn("[Fintrac] pushToCloud falló:", e.message);
+                    toast("⚠ No se pudo sincronizar: " + e.message, "err");
                 }
             }
 
             async function pushBatchToCloud(arr) {
                 if (!currentUser || !arr.length) return;
                 try {
-                    const rows = arr.map((g) => ({
-                        id: g.id,
-                        user_id: currentUser.id,
-                        monto: g.monto,
-                        descripcion: g.desc,
-                        fecha: g.fecha,
-                        categoria: g.categoria || null,
-                        subcat: g.subcat || null,
-                        medio: g.medio || null,
-                        cuotas: g.cuotas || 1,
-                        etiqueta: g.etiqueta || null,
-                        notas: g.notas || null,
-                        origen: g.origen || "manual",
-                        mesanio: g.mesanio || null,
-                    }));
+                    const rows = arr.map(toRow);
+                    console.log(
+                        "[Fintrac] pushBatchToCloud →",
+                        rows.length,
+                        "filas",
+                    );
                     const { error } = await _sb
                         .from("transacciones")
                         .upsert(rows);
-                    if (error) throw error;
+                    if (error) {
+                        console.error(
+                            "[Fintrac] pushBatchToCloud ERROR:",
+                            error.code,
+                            error.message,
+                            error.details,
+                        );
+                        throw error;
+                    }
+                    console.log(
+                        "[Fintrac] pushBatchToCloud OK:",
+                        rows.length,
+                        "filas",
+                    );
                 } catch (e) {
                     console.warn(
-                        "[Fintrac] pushBatchToCloud error:",
+                        "[Fintrac] pushBatchToCloud falló:",
                         e.message,
                     );
+                    toast("⚠ Error al subir lote: " + e.message, "err");
                 }
             }
 
             async function deleteFromCloud(id) {
                 if (!currentUser) return;
                 try {
-                    await _sb
+                    // Los IDs se guardan como string en Supabase (via toRow)
+                    const { error } = await _sb
                         .from("transacciones")
                         .delete()
-                        .eq("id", id)
+                        .eq("id", String(id))
                         .eq("user_id", currentUser.id);
+                    if (error) throw error;
                 } catch (e) {
                     console.warn("[Fintrac] deleteFromCloud error:", e.message);
                 }
@@ -3804,9 +3841,12 @@
             // ── API KEY ───────────────────────────────────────────────────
             async function saveApiKey() {
                 const v = document.getElementById("api-key-input").value.trim();
-                // Aceptar keys sk-ant... y también sk-... por si cambia el formato
-                if (!v || v.length < 10)
-                    return toast("Ingresá una API key válida", "err");
+                // Las keys de Anthropic Claude comienzan con sk-ant-
+                if (!v || !v.startsWith("sk-ant"))
+                    return toast(
+                        "Key inválida (debe empezar con sk-ant)",
+                        "err",
+                    );
                 const btn = document.getElementById("api-save-btn");
                 if (btn) {
                     btn.disabled = true;
@@ -4166,8 +4206,10 @@ Devolvé EXACTAMENTE este objeto:
             }
 
             // ── PUSH + PERSIST ────────────────────────────────────────────
+            // Contador para evitar colisiones de ID en importación batch (Date.now puede repetirse)
+            let _pushCounter = 0;
             function push(g) {
-                g.id = Date.now();
+                g.id = Date.now() * 1000 + (++_pushCounter % 1000);
                 g.mesanio = fmtMesAnio(g.fecha);
                 gastos.push(g);
                 localStorage.setItem("gastos_v2", JSON.stringify(gastos));
@@ -4226,7 +4268,7 @@ Devolvé EXACTAMENTE este objeto:
         <div style="font-weight:500;font-size:13px">${esc(g.desc)}</div>
         ${g.subcat ? `<div style="font-size:11px;color:var(--muted)">${esc(g.subcat)}</div>` : ""}
       </td>
-      <td><span class="chip chip-ef">${esc(g.categoria)}</span></td>
+      <td><span class="chip ${chipCategoria(g.categoria)}">${esc(g.categoria)}</span></td>
       <td class="td-amount">$${g.monto.toLocaleString("es-AR")}</td>
       <td><span class="chip ${chipMedio(g.medio)}">${esc(g.medio)}</span></td>
       <td><span class="chip ${g.origen === "ai" ? "chip-ai" : g.origen === "csv-mp" ? "chip-mp" : "chip-ef"}">${g.origen === "ai" ? "✦ IA" : g.origen === "csv-mp" ? "📊 CSV MP" : "✏ manual"}</span></td>
@@ -4244,12 +4286,41 @@ Devolvé EXACTAMENTE este objeto:
                 renderHistorial();
                 deleteFromCloud(id); // sync async
             }
-            function clearAll() {
-                if (!confirm("¿Borrar todo el historial?")) return;
+            async function clearAll() {
+                if (
+                    !confirm(
+                        "¿Borrar todo el historial? Esta acción eliminará también los datos en la nube.",
+                    )
+                )
+                    return;
+                // Borrar de la nube si hay sesión activa
+                if (currentUser) {
+                    try {
+                        const { error } = await _sb
+                            .from("transacciones")
+                            .delete()
+                            .eq("user_id", currentUser.id);
+                        if (error) throw error;
+                        console.log(
+                            "[Fintrac] clearAll: registros eliminados de la nube",
+                        );
+                    } catch (e) {
+                        console.warn(
+                            "[Fintrac] clearAll cloud error:",
+                            e.message,
+                        );
+                        toast(
+                            "⚠ Error al borrar de la nube: " + e.message,
+                            "err",
+                        );
+                        return; // No borrar local si la nube falló
+                    }
+                }
                 gastos = [];
                 localStorage.setItem("gastos_v2", "[]");
                 updateBadge();
                 renderHistorial();
+                toast("🗑 Historial borrado", "warn");
             }
 
             // ── EXPORT CSV ────────────────────────────────────────────────
@@ -4654,7 +4725,8 @@ Devolvé EXACTAMENTE este objeto:
                         .replace(",", ".")
                         .trim();
                     const monto = parseFloat(montoStr);
-                    if (isNaN(monto) || monto >= 0) continue; // only negatives = debits
+                    if (isNaN(monto) || monto === 0) continue;
+                    // Los débitos pueden ser negativos (formato estándar) o positivos (según el reporte)
 
                     const rawDesc = iD >= 0 ? cols[iD] : "Movimiento MP";
                     const fecha =
@@ -5259,13 +5331,34 @@ ${list}`,
                 });
             }
             function esc(s) {
-                return (s || "").replace(/</g, "&lt;");
+                return (s || "")
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#39;");
             }
             function chipMedio(m) {
                 if (m === "Mercado Pago") return "chip-mp";
                 if (m === "Modo") return "chip-modo";
                 if (m?.includes("Tarjeta")) return "chip-tc";
                 return "chip-ef";
+            }
+            function chipCategoria(c) {
+                // Mapeo de categorías a clases CSS de color
+                const map = {
+                    Alimentación: "chip-mp",
+                    Transporte: "chip-modo",
+                    Vivienda: "chip-tc",
+                    Salud: "chip-ef",
+                    Entretenimiento: "chip-ai",
+                    Indumentaria: "chip-mp",
+                    Educación: "chip-modo",
+                    Tecnología: "chip-tc",
+                    Finanzas: "chip-ai",
+                    Otros: "chip-ef",
+                };
+                return map[c] || "chip-ef";
             }
             function toast(msg, type = "ok") {
                 const t = document.getElementById("toast");
