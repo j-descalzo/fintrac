@@ -3310,10 +3310,47 @@
                 );
                 currentUser = session?.user ?? null;
                 updateAuthUI();
+<<<<<<< HEAD
+
+                // ── Restaurar API key desde el perfil en la nube ───────────────
+                // Si el usuario no tiene la key en este browser/dispositivo pero
+                // la guardó desde otro, se recupera automáticamente al login.
+                if (session?.user && !apiKey) {
+                    const cloudKey = session.user.user_metadata?.anthropic_key;
+                    if (cloudKey) {
+                        apiKey = cloudKey;
+                        _IDB.set("anthropic_key", cloudKey); // async, no blocking
+                        setApiStatus(true);
+                        console.log(
+                            "[Fintrac] API key restaurada desde el perfil Supabase",
+                        );
+                    }
+                }
+
+=======
+>>>>>>> e98a893e216305419d57fe214a5266cfa6fe8047
                 if (event === "SIGNED_IN") {
                     document.getElementById("modal-auth").style.display =
                         "none";
                     localStorage.removeItem("fintrac_skip_auth");
+<<<<<<< HEAD
+                    // Mostrar modal de API key solo si no viene del perfil en la nube
+                    const hasKey =
+                        apiKey || session?.user?.user_metadata?.anthropic_key;
+                    const skip =
+                        (await _IDB.get("skip_api")) ||
+                        localStorage.getItem("skip_api");
+                    if (!hasKey && !skip) {
+                        setTimeout(
+                            () =>
+                                (document.getElementById(
+                                    "modal-api",
+                                ).style.display = "flex"),
+                            500,
+                        );
+                    }
+=======
+>>>>>>> e98a893e216305419d57fe214a5266cfa6fe8047
                     toast("✓ Sesión iniciada — sincronizando…", "ok");
                     // Subir gastos que se encolaron antes de tener sesión
                     if (_pendingCloudPush.length > 0) {
@@ -3577,10 +3614,29 @@
                     if (localOnly.length > 0) {
                         await pushBatchToCloud(localOnly);
                     }
+<<<<<<< HEAD
+
+                    // Re-renderizar historial si está visible
+                    if (
+                        document
+                            .getElementById("panel-historial")
+                            ?.classList.contains("active")
+                    ) {
+                        renderHistorial();
+                    }
+=======
+>>>>>>> e98a893e216305419d57fe214a5266cfa6fe8047
                 } catch (e) {
                     console.error("[Fintrac] sync error:", e);
                     toast("Error al sincronizar: " + e.message, "err");
                 }
+<<<<<<< HEAD
+
+                // Vaciar la cola persistente (gastos que quedaron pendientes
+                // por cierre abrupto del browser en la sesión anterior)
+                await _flushQueue();
+=======
+>>>>>>> e98a893e216305419d57fe214a5266cfa6fe8047
                 setSyncBadge("ok");
             }
 
@@ -3855,6 +3911,26 @@
                 apiKey = v;
                 await _IDB.set("anthropic_key", v);
                 await _IDB.del("skip_api");
+<<<<<<< HEAD
+                // Sincronizar al perfil en la nube para que esté disponible
+                // en cualquier dispositivo / browser donde el usuario inicie sesión
+                if (currentUser) {
+                    try {
+                        await _sb.auth.updateUser({
+                            data: { anthropic_key: v },
+                        });
+                        console.log(
+                            "[Fintrac] API key sincronizada al perfil Supabase",
+                        );
+                    } catch (e) {
+                        console.warn(
+                            "[Fintrac] Error sync API key al cloud:",
+                            e.message,
+                        );
+                    }
+                }
+=======
+>>>>>>> e98a893e216305419d57fe214a5266cfa6fe8047
                 document.getElementById("modal-api").style.display = "none";
                 setApiStatus(true);
                 if (btn) {
@@ -4205,6 +4281,60 @@ Devolvé EXACTAMENTE este objeto:
                 toast("✓ Gasto guardado", "ok");
             }
 
+<<<<<<< HEAD
+            // ── PERSISTENT PUSH QUEUE ──────────────────────────────────────
+            // Los gastos se escriben en localStorage ANTES de intentar subirlos.
+            // Si el browser se cierra a mitad de la request, el registro sobrevive
+            // en la cola y se sube automáticamente en el próximo login/sync.
+            function _queueAdd(g) {
+                try {
+                    const q = JSON.parse(
+                        localStorage.getItem("_push_queue") || "[]",
+                    );
+                    if (!q.find((x) => String(x.id) === String(g.id)))
+                        q.push(g);
+                    localStorage.setItem("_push_queue", JSON.stringify(q));
+                } catch {}
+            }
+            function _queueRemove(id) {
+                try {
+                    const q = JSON.parse(
+                        localStorage.getItem("_push_queue") || "[]",
+                    );
+                    localStorage.setItem(
+                        "_push_queue",
+                        JSON.stringify(
+                            q.filter((x) => String(x.id) !== String(id)),
+                        ),
+                    );
+                } catch {}
+            }
+            async function _flushQueue() {
+                if (!currentUser) return;
+                try {
+                    const q = JSON.parse(
+                        localStorage.getItem("_push_queue") || "[]",
+                    );
+                    if (!q.length) return;
+                    console.log(
+                        "[Fintrac] Reintentando",
+                        q.length,
+                        "gastos de la cola persistente…",
+                    );
+                    const rows = q.map(toRow);
+                    const { error } = await _sb
+                        .from("transacciones")
+                        .upsert(rows);
+                    if (error) throw error;
+                    localStorage.removeItem("_push_queue");
+                    console.log("[Fintrac] Cola persistente vaciada OK");
+                } catch (e) {
+                    console.warn("[Fintrac] _flushQueue error:", e.message);
+                }
+            }
+
+=======
+>>>>>>> e98a893e216305419d57fe214a5266cfa6fe8047
             // ── PUSH + PERSIST ────────────────────────────────────────────
             // Contador para evitar colisiones de ID en importación batch (Date.now puede repetirse)
             let _pushCounter = 0;
@@ -4215,9 +4345,16 @@ Devolvé EXACTAMENTE este objeto:
                 localStorage.setItem("gastos_v2", JSON.stringify(gastos));
                 updateBadge();
                 if (currentUser) {
+<<<<<<< HEAD
+                    _queueAdd(g); // 1. Persiste en cola ANTES de enviar
+                    pushToCloud(g).then(() => _queueRemove(g.id)); // 2. Elimina de cola solo si OK
+                } else {
+                    _pendingCloudPush.push(g); // sin sesión → encolar en memoria
+=======
                     pushToCloud(g); // sesión activa → subir directo
                 } else {
                     _pendingCloudPush.push(g); // sin sesión → encolar
+>>>>>>> e98a893e216305419d57fe214a5266cfa6fe8047
                     console.log(
                         "[Fintrac] push encolado (sin sesión), total pendientes:",
                         _pendingCloudPush.length,
@@ -5298,7 +5435,11 @@ ${list}`,
                     .join("");
             }
 
+<<<<<<< HEAD
+            // ── Config: API Key ────────────────────────────────────────────
+=======
             // ── Config: API Key ──────────────────────────────────────────
+>>>>>>> e98a893e216305419d57fe214a5266cfa6fe8047
             async function cfgSaveApiKey() {
                 const v = document.getElementById("cfg-api-key").value.trim();
                 if (!v.startsWith("sk-ant"))
@@ -5308,8 +5449,26 @@ ${list}`,
                     );
                 apiKey = v;
                 await _IDB.set("anthropic_key", v);
+<<<<<<< HEAD
+                // Sincronizar también al perfil en la nube
+                if (currentUser) {
+                    try {
+                        await _sb.auth.updateUser({
+                            data: { anthropic_key: v },
+                        });
+                    } catch (e) {
+                        console.warn(
+                            "[Fintrac] Error sync API key al cloud:",
+                            e.message,
+                        );
+                    }
+                }
+                setApiStatus(true);
+                toast("✓ API key guardada y sincronizada", "ok");
+=======
                 setApiStatus(true);
                 toast("✓ API key guardada", "ok");
+>>>>>>> e98a893e216305419d57fe214a5266cfa6fe8047
             }
 
             // ── HELPERS ───────────────────────────────────────────────────
