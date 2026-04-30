@@ -42,8 +42,14 @@
             content="Escaneá tickets, importá CSV de Mercado Pago y analizá tus gastos con IA. Por Jonathan Descalzo."
         />
         <meta property="og:type" content="website" />
+        <meta property="og:image" content="icons/icon-512.png" />
         <!-- SheetJS for XLSX export -->
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+        <script
+            src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"
+            integrity="sha512-r22gChDnGvBylk90+2e/ycr3RVrDi8DIOkIGNhJlKfuyQM4tIRAI062MaV8sfjQKYVGjOBwYR7neKfRx6v19A=="
+            crossorigin="anonymous"
+            referrerpolicy="no-referrer"
+        ></script>
         <!-- Supabase -->
         <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
         <link
@@ -3282,35 +3288,14 @@
                 },
             });
 
-            // ── DEBUG AUTH: loguear lo que hay en la URL al cargar ───────
-            (function debugAuthUrl() {
-                const h = window.location.hash;
-                const s = window.location.search;
-                console.log("[Auth] URL al cargar:", window.location.href);
-                console.log("[Auth] hash:", h || "(vacío)");
-                console.log("[Auth] search:", s || "(vacío)");
-                if (h.includes("access_token") || s.includes("code")) {
-                    console.log(
-                        "[Auth] ✓ Hay token/code en la URL — Supabase debería procesarlo",
-                    );
-                }
-            })();
-
             // ── AUTH STATE ────────────────────────────────────────────
             let currentUser = null;
             let authMode = "login"; // 'login' | 'register'
 
             // Escuchar cambios de sesión (login, logout, token refresh)
             _sb.auth.onAuthStateChange(async (event, session) => {
-                console.log(
-                    "[Auth] onAuthStateChange — event:",
-                    event,
-                    "| user:",
-                    session?.user?.email ?? "null",
-                );
                 currentUser = session?.user ?? null;
                 updateAuthUI();
-<<<<<<< HEAD
 
                 // ── Restaurar API key desde el perfil en la nube ───────────────
                 // Si el usuario no tiene la key en este browser/dispositivo pero
@@ -3321,19 +3306,13 @@
                         apiKey = cloudKey;
                         _IDB.set("anthropic_key", cloudKey); // async, no blocking
                         setApiStatus(true);
-                        console.log(
-                            "[Fintrac] API key restaurada desde el perfil Supabase",
-                        );
                     }
                 }
 
-=======
->>>>>>> e98a893e216305419d57fe214a5266cfa6fe8047
                 if (event === "SIGNED_IN") {
                     document.getElementById("modal-auth").style.display =
                         "none";
                     localStorage.removeItem("fintrac_skip_auth");
-<<<<<<< HEAD
                     // Mostrar modal de API key solo si no viene del perfil en la nube
                     const hasKey =
                         apiKey || session?.user?.user_metadata?.anthropic_key;
@@ -3349,16 +3328,9 @@
                             500,
                         );
                     }
-=======
->>>>>>> e98a893e216305419d57fe214a5266cfa6fe8047
                     toast("✓ Sesión iniciada — sincronizando…", "ok");
                     // Subir gastos que se encolaron antes de tener sesión
                     if (_pendingCloudPush.length > 0) {
-                        console.log(
-                            "[Fintrac] Subiendo",
-                            _pendingCloudPush.length,
-                            "gastos pendientes...",
-                        );
                         await pushBatchToCloud(_pendingCloudPush);
                         _pendingCloudPush = [];
                     }
@@ -3367,14 +3339,7 @@
                 if (event === "SIGNED_OUT") {
                     toast("Sesión cerrada", "warn");
                 }
-                if (event === "TOKEN_REFRESHED") {
-                    console.log("[Auth] Token refrescado OK");
-                }
                 if (event === "INITIAL_SESSION") {
-                    console.log(
-                        "[Auth] Sesión inicial detectada:",
-                        session?.user?.email ?? "sin sesión",
-                    );
                     // Limpiar el hash/code de la URL después de que Supabase lo procesó
                     if (
                         window.location.hash ||
@@ -3463,7 +3428,6 @@
                 // redirectTo debe ser la URL base limpia, sin hash ni search params
                 const redirectTo =
                     window.location.origin + window.location.pathname;
-                console.log("[Auth] Google OAuth — redirectTo:", redirectTo);
                 const { error } = await _sb.auth.signInWithOAuth({
                     provider: "google",
                     options: {
@@ -3614,7 +3578,6 @@
                     if (localOnly.length > 0) {
                         await pushBatchToCloud(localOnly);
                     }
-<<<<<<< HEAD
 
                     // Re-renderizar historial si está visible
                     if (
@@ -3624,19 +3587,14 @@
                     ) {
                         renderHistorial();
                     }
-=======
->>>>>>> e98a893e216305419d57fe214a5266cfa6fe8047
                 } catch (e) {
                     console.error("[Fintrac] sync error:", e);
                     toast("Error al sincronizar: " + e.message, "err");
                 }
-<<<<<<< HEAD
 
                 // Vaciar la cola persistente (gastos que quedaron pendientes
                 // por cierre abrupto del browser en la sesión anterior)
                 await _flushQueue();
-=======
->>>>>>> e98a893e216305419d57fe214a5266cfa6fe8047
                 setSyncBadge("ok");
             }
 
@@ -3665,24 +3623,17 @@
                 if (!currentUser) return;
                 try {
                     const row = toRow(g);
-                    console.log(
-                        "[Fintrac] pushToCloud →",
-                        row.id,
-                        row.descripcion,
-                    );
                     const { error } = await _sb
                         .from("transacciones")
                         .upsert(row);
                     if (error) {
                         console.error(
-                            "[Fintrac] pushToCloud ERROR:",
+                            "[Fintrac] pushToCloud error:",
                             error.code,
                             error.message,
-                            error.details,
                         );
                         throw error;
                     }
-                    console.log("[Fintrac] pushToCloud OK:", row.id);
                 } catch (e) {
                     console.warn("[Fintrac] pushToCloud falló:", e.message);
                     toast("⚠ No se pudo sincronizar: " + e.message, "err");
@@ -3693,28 +3644,17 @@
                 if (!currentUser || !arr.length) return;
                 try {
                     const rows = arr.map(toRow);
-                    console.log(
-                        "[Fintrac] pushBatchToCloud →",
-                        rows.length,
-                        "filas",
-                    );
                     const { error } = await _sb
                         .from("transacciones")
                         .upsert(rows);
                     if (error) {
                         console.error(
-                            "[Fintrac] pushBatchToCloud ERROR:",
+                            "[Fintrac] pushBatchToCloud error:",
                             error.code,
                             error.message,
-                            error.details,
                         );
                         throw error;
                     }
-                    console.log(
-                        "[Fintrac] pushBatchToCloud OK:",
-                        rows.length,
-                        "filas",
-                    );
                 } catch (e) {
                     console.warn(
                         "[Fintrac] pushBatchToCloud falló:",
@@ -3861,11 +3801,11 @@
                     data: { session },
                     error: sessionError,
                 } = await _sb.auth.getSession();
-                console.log(
-                    "[Auth] getSession() →",
-                    session?.user?.email ?? "null",
-                    sessionError ? "| error: " + sessionError.message : "",
-                );
+                if (sessionError)
+                    console.warn(
+                        "[Auth] getSession error:",
+                        sessionError.message,
+                    );
                 currentUser = session?.user ?? null;
                 updateAuthUI();
 
@@ -3911,7 +3851,6 @@
                 apiKey = v;
                 await _IDB.set("anthropic_key", v);
                 await _IDB.del("skip_api");
-<<<<<<< HEAD
                 // Sincronizar al perfil en la nube para que esté disponible
                 // en cualquier dispositivo / browser donde el usuario inicie sesión
                 if (currentUser) {
@@ -3919,9 +3858,6 @@
                         await _sb.auth.updateUser({
                             data: { anthropic_key: v },
                         });
-                        console.log(
-                            "[Fintrac] API key sincronizada al perfil Supabase",
-                        );
                     } catch (e) {
                         console.warn(
                             "[Fintrac] Error sync API key al cloud:",
@@ -3929,8 +3865,6 @@
                         );
                     }
                 }
-=======
->>>>>>> e98a893e216305419d57fe214a5266cfa6fe8047
                 document.getElementById("modal-api").style.display = "none";
                 setApiStatus(true);
                 if (btn) {
@@ -4281,7 +4215,6 @@ Devolvé EXACTAMENTE este objeto:
                 toast("✓ Gasto guardado", "ok");
             }
 
-<<<<<<< HEAD
             // ── PERSISTENT PUSH QUEUE ──────────────────────────────────────
             // Los gastos se escriben en localStorage ANTES de intentar subirlos.
             // Si el browser se cierra a mitad de la request, el registro sobrevive
@@ -4316,25 +4249,17 @@ Devolvé EXACTAMENTE este objeto:
                         localStorage.getItem("_push_queue") || "[]",
                     );
                     if (!q.length) return;
-                    console.log(
-                        "[Fintrac] Reintentando",
-                        q.length,
-                        "gastos de la cola persistente…",
-                    );
                     const rows = q.map(toRow);
                     const { error } = await _sb
                         .from("transacciones")
                         .upsert(rows);
                     if (error) throw error;
                     localStorage.removeItem("_push_queue");
-                    console.log("[Fintrac] Cola persistente vaciada OK");
                 } catch (e) {
                     console.warn("[Fintrac] _flushQueue error:", e.message);
                 }
             }
 
-=======
->>>>>>> e98a893e216305419d57fe214a5266cfa6fe8047
             // ── PUSH + PERSIST ────────────────────────────────────────────
             // Contador para evitar colisiones de ID en importación batch (Date.now puede repetirse)
             let _pushCounter = 0;
@@ -4345,20 +4270,10 @@ Devolvé EXACTAMENTE este objeto:
                 localStorage.setItem("gastos_v2", JSON.stringify(gastos));
                 updateBadge();
                 if (currentUser) {
-<<<<<<< HEAD
                     _queueAdd(g); // 1. Persiste en cola ANTES de enviar
                     pushToCloud(g).then(() => _queueRemove(g.id)); // 2. Elimina de cola solo si OK
                 } else {
                     _pendingCloudPush.push(g); // sin sesión → encolar en memoria
-=======
-                    pushToCloud(g); // sesión activa → subir directo
-                } else {
-                    _pendingCloudPush.push(g); // sin sesión → encolar
->>>>>>> e98a893e216305419d57fe214a5266cfa6fe8047
-                    console.log(
-                        "[Fintrac] push encolado (sin sesión), total pendientes:",
-                        _pendingCloudPush.length,
-                    );
                 }
             }
 
@@ -4438,9 +4353,6 @@ Devolvé EXACTAMENTE este objeto:
                             .delete()
                             .eq("user_id", currentUser.id);
                         if (error) throw error;
-                        console.log(
-                            "[Fintrac] clearAll: registros eliminados de la nube",
-                        );
                     } catch (e) {
                         console.warn(
                             "[Fintrac] clearAll cloud error:",
@@ -5435,11 +5347,7 @@ ${list}`,
                     .join("");
             }
 
-<<<<<<< HEAD
             // ── Config: API Key ────────────────────────────────────────────
-=======
-            // ── Config: API Key ──────────────────────────────────────────
->>>>>>> e98a893e216305419d57fe214a5266cfa6fe8047
             async function cfgSaveApiKey() {
                 const v = document.getElementById("cfg-api-key").value.trim();
                 if (!v.startsWith("sk-ant"))
@@ -5449,7 +5357,6 @@ ${list}`,
                     );
                 apiKey = v;
                 await _IDB.set("anthropic_key", v);
-<<<<<<< HEAD
                 // Sincronizar también al perfil en la nube
                 if (currentUser) {
                     try {
@@ -5465,10 +5372,6 @@ ${list}`,
                 }
                 setApiStatus(true);
                 toast("✓ API key guardada y sincronizada", "ok");
-=======
-                setApiStatus(true);
-                toast("✓ API key guardada", "ok");
->>>>>>> e98a893e216305419d57fe214a5266cfa6fe8047
             }
 
             // ── HELPERS ───────────────────────────────────────────────────
